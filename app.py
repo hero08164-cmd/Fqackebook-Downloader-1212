@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import yt_dlp
+import re
+import requests
 
 app = FastAPI(title="Render FB Downloader API")
 
@@ -14,35 +16,44 @@ app.add_middleware(
 )
 
 def extract_fb_video(video_url):
-    # Safely format common sharing short links if needed
-    if "share/r" in video_url:
-        # We let yt-dlp handle redirections but add strict network options
-        pass
+    # JUGAD: Agar share/r wala link hai, toh uski asli redirected URL nikalna
+    if "share/r" in video_url or "facebook.com/share" in video_url:
+        try:
+            # Server se ek choti HEAD request bhej kar asli link pata karenge
+            response = requests.head(video_url, allow_redirects=True, timeout=10)
+            video_url = response.url
+        except Exception:
+            pass # Agar network fail ho toh standard link hi rehne dein
 
     ydl_opts = {
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
-        'socket_timeout': 30,
+        'socket_timeout': 20,
         'nocheckcertificate': True,
-        # Fake a premium web browser to prevent Facebook block page
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
         }
     }
+    # Baaki niche ka code same rahega...
+    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
-            # Extract final direct url safely
+            # Formats check karna agar direct url blank mile
             download_url = info.get("url")
             if not download_url and info.get("formats"):
-                download_url = info["formats"][-1].get("url")
+                # Filters to get normal progressive formats (mp4)
+                for f in reversed(info["formats"]):
+                    if f.get("vcodec") != "none" and f.get("acodec") != "none" and f.get("url"):
+                        download_url = f.get("url")
+                        break
+                if not download_url:
+                    download_url = info["formats"][-1].get("url")
                 
             if not download_url:
-                return {"status": "error", "message": "Video link nahi nikal payi. Format alag hai."}
+                return {"status": "error", "message": "Facebook secure login wall hit ho gayi boss. Dusra link try karein."}
 
             return {
                 "status": "success",
@@ -51,7 +62,8 @@ def extract_fb_video(video_url):
                 "thumbnail": info.get("thumbnail")
             }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        # JUGAD 3: Agar normal extraction fail ho jaye, toh clean generic error message
+        return {"status": "error", "message": f"Parsing failed. Link protection active. Error: {str(e)}"}
 
 @app.get("/api/download")
 def download_api(url: str = Query(..., description="FB Link")):
@@ -108,9 +120,10 @@ def home_page():
                         document.getElementById('dlBtn').href = data.download_url;
                         document.getElementById('result').style.display = 'block';
                     } else { alert('Error: ' + data.detail); }
-                } catch(e) { document.getElementById('loader').style.display = 'none'; alert('Server error!'); }
+                } catch(e) { document.getElementById('loader').style.display = 'none'; alert('Server error ya link login mang raha hai!'); }
             }
         </script>
     </body>
     </html>
     """
+    
