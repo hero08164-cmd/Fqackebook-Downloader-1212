@@ -14,23 +14,40 @@ app.add_middleware(
 )
 
 def extract_fb_video(video_url):
+    # Safely format common sharing short links if needed
+    if "share/r" in video_url:
+        # We let yt-dlp handle redirections but add strict network options
+        pass
+
     ydl_opts = {
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
-        'socket_timeout': 20,
+        'socket_timeout': 30,
         'nocheckcertificate': True,
+        # Fake a premium web browser to prevent Facebook block page
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
         }
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
+            
+            # Extract final direct url safely
+            download_url = info.get("url")
+            if not download_url and info.get("formats"):
+                download_url = info["formats"][-1].get("url")
+                
+            if not download_url:
+                return {"status": "error", "message": "Video link nahi nikal payi. Format alag hai."}
+
             return {
                 "status": "success",
                 "title": info.get("title", "Facebook Video"),
-                "download_url": info.get("url"),
+                "download_url": download_url,
                 "thumbnail": info.get("thumbnail")
             }
     except Exception as e:
@@ -57,7 +74,7 @@ def home_page():
         <style>
             body { font-family: Arial, sans-serif; background: #1877f2; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
             .box { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); width: 90%; max-width: 450px; text-align: center; }
-            input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; box-box-sizing: border-box; font-size: 15px; }
+            input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
             button { width: 100%; padding: 12px; background: #0056b3; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
             #loader { display: none; margin-top: 15px; font-weight: bold; color: #1877f2; }
             #result { display: none; margin-top: 20px; padding: 15px; background: #f0f2f5; border-radius: 6px; text-align: left; }
