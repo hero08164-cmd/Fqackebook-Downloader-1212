@@ -74,25 +74,25 @@ def home_page():
                     var data = await response.json();
                     var htmlContent = data.contents;
 
-                    var hdMatch = htmlContent.match(/"browser_native_hd_url":"(.*?)"/) || htmlContent.match(/hd_src:"(.*?)"/);
-                    var sdMatch = htmlContent.match(/"browser_native_sd_url":"(.*?)"/) || htmlContent.match(/sd_src:"(.*?)"/);
-                    
                     var finalVideoUrl = "";
-                    if (hdMatch && hdMatch[1]) {
-                        finalVideoUrl = hdMatch[1];
-                    } else if (sdMatch && sdMatch[1]) {
-                        finalVideoUrl = sdMatch[1];
-                    }
 
-                    if (!finalVideoUrl) {
-                        var fallbackMatch = htmlContent.match(/video_url":"(.*?)"/);
-                        if (fallbackMatch && fallbackMatch[1]) {
-                            finalVideoUrl = fallbackMatch[1];
-                        }
+                    // SAFE METHOD: Regex literals ki jagah String splitting use kar rahe hain jo kabhi crash nahi karegi
+                    if (htmlContent.includes('"browser_native_hd_url":"')) {
+                        finalVideoUrl = htmlContent.split('"browser_native_hd_url":"')[1].split('"')[0];
+                    } else if (htmlContent.includes('"browser_native_sd_url":"')) {
+                        finalVideoUrl = htmlContent.split('"browser_native_sd_url":"')[1].split('"')[0];
+                    } else if (htmlContent.includes('hd_src:"')) {
+                        finalVideoUrl = htmlContent.split('hd_src:"')[1].split('"')[0];
+                    } else if (htmlContent.includes('sd_src:"')) {
+                        finalVideoUrl = htmlContent.split('sd_src:"')[1].split('"')[0];
+                    } else if (htmlContent.includes('video_url":"')) {
+                        finalVideoUrl = htmlContent.split('video_url":"')[1].split('"')[0];
                     }
 
                     if (finalVideoUrl) {
-                        var cleanUrl = finalVideoUrl.replace(/\\\\/g, '').replace(/\\/g, '');
+                        // Backslash hataane ke liye split aur join ka use (No regex slash crash issue)
+                        var cleanUrl = finalVideoUrl.split('\\\\').join('').split('\\').join('');
+                        
                         document.getElementById('hdLink').href = cleanUrl;
                         loader.style.display = 'none';
                         resultDiv.style.display = 'block';
