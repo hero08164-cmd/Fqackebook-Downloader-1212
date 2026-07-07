@@ -3,13 +3,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import subprocess
 import json
-import re
+import traceback
 
-app = FastAPI(
-    title="Premium Social Media Downloader API",
-    description="Free API to download Facebook Reels, Videos, and more!",
-    version="1.1.12"
-)
+app = FastAPI(title="Social Media Downloader Debug Edition")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,52 +17,57 @@ app.add_middleware(
 
 def extract_video_link(video_url):
     try:
-        # social-media-downloader ko CLI (command line) ke zariye call kar rahe hain JSON output ke liye
-        # --json ya -j flag check karne ke liye standard subprocess call lagayi hai
+        # Command run kar rahe hain bina code crash kiye output dekhne ke liye
         command = ["social-media-downloader", video_url, "--json"]
+        result = subprocess.run(command, capture_output=True, text=True)
         
-        # Command execute karke response capture kar rahe hain
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        # Debugging ke liye Render ke logs me print karega
+        print("STDOUT OUTPUT:", result.stdout)
+        print("STDERR OUTPUT:", result.stderr)
         
-        if result.stdout:
-            data = json.loads(result.stdout.strip())
-            # Library ke output structure ke mutabiq best quality link nikalna
-            download_url = data.get("url") or data.get("download_url") or data.get("direct_link")
-            
-            if download_url:
-                return {
-                    "status": "success",
-                    "title": data.get("title", "Social Media Video"),
-                    "download_url": download_url,
-                    "thumbnail": data.get("thumbnail")
-                }
-                
-        # Fallback agar command direct link na de par logs clean ho
-        return {"status": "error", "message": "Video stream link nahi mil payi boss."}
-        
-    except subprocess.CalledProcessError as e:
-        # Agar short links ke redirection me issue aaye toh error handle karne ke liye
-        return {"status": "error", "message": f"Library extraction failed: {e.stderr}"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+        if result.returncode == 0 and result.stdout:
+            try:
+                data = json.loads(result.stdout.strip())
+                download_url = data.get("url") or data.get("download_url") or data.get("direct_link")
+                if download_url:
+                    return {
+                        "status": "success",
+                        "title": data.get("title", "Facebook Video"),
+                        "download_url": download_url
+                    }
+            except json.JSONDecodeError:
+                # Agar output JSON nahi hai, toh raw text se URL nikalne ki koshish karenge
+                pass
 
-# ----------------------------------------------------
-# 1. DUSRE DEVELOPERS KE LIYE: API ENDPOINT
-# ----------------------------------------------------
+        # METHOD 2: Agar JSON flag kaam nahi kar raha, toh bina flag ke chala kar output check karte hain
+        raw_command = ["social-media-downloader", video_url]
+        raw_result = subprocess.run(raw_command, capture_output=True, text=True)
+        print("RAW CLIENT OUTPUT:", raw_result.stdout)
+        
+        # Raw text me se http/https link extract karna
+        urls = re.findall(r'(https?://[^\s]+)', raw_result.stdout)
+        if urls:
+            # Sabse aakhri ya pehli url jo video stream ho sakti hai
+            return {"status": "success", "title": "Extracted Video", "download_url": urls[0]}
+
+        return {
+            "status": "error", 
+            "message": f"Extraction failed. Server Logs: {result.stderr or raw_result.stdout}"
+        }
+        
+    except Exception as e:
+        print("CRASH LOG:", traceback.format_exc())
+        return {"status": "error", "message": f"Internal Error: {str(e)}"}
+
 @app.get("/api/download")
-def download_api(url: str = Query(..., description="Video ka URL dalein")):
+def download_api(url: str = Query(..., description="Video URL")):
     if not url:
-        raise HTTPException(status_code=400, detail="URL dalna zaroori hai boss!")
-    
+        raise HTTPException(status_code=400, detail="URL missing hai boss!")
     result = extract_video_link(url)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
-        
     return result
 
-# ----------------------------------------------------
-# 2. USERS KE LIYE: CLEAN WEBSITE FRONTEND
-# ----------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def home_page():
     return """
@@ -75,74 +76,42 @@ def home_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>All-in-One Social Media Downloader</title>
+        <title>FB Downloader - Debug Mode</title>
         <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
-            body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-            .wrapper { background: white; padding: 40px 30px; border-radius: 16px; box-shadow: 0px 10px 30px rgba(0,0,0,0.2); width: 100%; max-width: 500px; text-align: center; }
-            h1 { color: #764ba2; margin-bottom: 10px; font-size: 26px; }
-            p { color: #666; margin-bottom: 25px; font-size: 14px; }
-            .input-group { display: flex; flex-direction: column; gap: 15px; }
-            input { width: 100%; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px; outline: none; transition: 0.3s; }
-            input:focus { border-color: #764ba2; }
-            button { width: 100%; padding: 15px; background: #764ba2; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-            button:hover { background: #5a377d; }
-            #loader { display: none; margin-top: 20px; color: #764ba2; font-weight: bold; }
-            #result { margin-top: 25px; display: none; background: #f7fafc; padding: 20px; border-radius: 8px; text-align: left; }
-            .video-title { font-weight: bold; margin-bottom: 15px; font-size: 15px; color: #2d3748; word-break: break-all; }
-            .dl-btn { display: inline-block; text-align: center; width: 100%; padding: 12px; background: #48bb78; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
-            .dl-btn:hover { background: #38a169; }
+            body { font-family: Arial, sans-serif; background: #764ba2; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+            .box { background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 450px; text-align: center; }
+            input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; }
+            button { width: 100%; padding: 12px; background: #764ba2; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+            #loader { display: none; margin-top: 15px; font-weight: bold; }
+            #result { display: none; margin-top: 20px; padding: 15px; background: #f0f2f5; border-radius: 6px; text-align: left; }
         </style>
     </head>
     <body>
-        <div class="wrapper">
-            <h1>Social Media Downloader</h1>
-            <p>Paste Facebook, Instagram, or TikTok links below to download free!</p>
-            
-            <div class="input-group">
-                <input type="text" id="videoUrl" placeholder="Paste your link here...">
-                <button onclick="processVideo()">Download Video</button>
-            </div>
-
-            <div id="loader">Extracting high quality stream... ⏳</div>
-
+        <div class="box">
+            <h2>Social Media Downloader</h2>
+            <p>Debug Log Edition</p>
+            <input type="text" id="fbUrl" placeholder="Paste link here...">
+            <button onclick="downloadVideo()">Download Now</button>
+            <div id="loader">Processing... ⏳</div>
             <div id="result">
-                <div class="video-title" id="vTitle">Video Ready</div>
-                <a href="#" id="vLink" target="_blank" class="dl-btn">📥 Save Video to Device</a>
+                <a href="#" id="dlBtn" target="_blank" style="display:block; text-align:center; background:green; color:white; padding:10px; text-decoration:none; border-radius:4px;">📥 Download Video</a>
             </div>
         </div>
-
         <script>
-            async function processVideo() {
-                const urlInput = document.getElementById('videoUrl').value.trim();
-                const loader = document.getElementById('loader');
-                const resultDiv = document.getElementById('result');
-                
-                if (!urlInput) {
-                    alert('Boss, pehle link toh dalo!');
-                    return;
-                }
-
-                loader.style.display = 'block';
-                resultDiv.style.display = 'none';
-
+            async function downloadVideo() {
+                const url = document.getElementById('fbUrl').value.trim();
+                if(!url) return alert('Link dalo boss!');
+                document.getElementById('loader').style.display = 'block';
+                document.getElementById('result').style.display = 'none';
                 try {
-                    const response = await fetch(`/api/download?url=${encodeURIComponent(urlInput)}`);
-                    const data = await response.json();
-
-                    loader.style.display = 'none';
-
-                    if (response.ok) {
-                        document.getElementById('vTitle').innerText = data.title || "Facebook Video";
-                        document.getElementById('vLink').href = data.download_url;
-                        resultDiv.style.display = 'block';
-                    } else {
-                        alert('Error: ' + (data.detail || 'Extraction me dikkat aayi. Dusra link try karein!'));
-                    }
-                } catch (error) {
-                    loader.style.display = 'none';
-                    alert('Server response error!');
-                }
+                    const res = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
+                    const data = await res.json();
+                    document.getElementById('loader').style.display = 'none';
+                    if(res.ok) {
+                        document.getElementById('dlBtn').href = data.download_url;
+                        document.getElementById('result').style.display = 'block';
+                    } else { alert('Error: ' + data.detail); }
+                } catch(e) { document.getElementById('loader').style.display = 'none'; alert('Error reading output!'); }
             }
         </script>
     </body>
