@@ -1,9 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+import httpx # Iske liye requirements.txt me httpx likhna zaroori hai
 
-app = FastAPI(title="Ultimate FB Downloader Fixed")
+app = FastAPI(
+    title="Premium Facebook Downloader API",
+    description="Developers ke liye free API aur users ke liye tools",
+    version="1.0.0"
+)
 
+# CORS Allow karna zaroori hai taaki dusre developers ki website se aapki API block na ho
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -12,10 +18,69 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ----------------------------------------------------
+# 1. DUSRE DEVELOPERS KE LIYE: REAL API ENDPOINT
+# ----------------------------------------------------
 @app.get("/api/download")
-def download_api():
-    return {"status": "client_mode"}
+async def download_api(url: str = Query(..., description="Facebook Video/Reels ka URL yahan dalein")):
+    if not url:
+        raise HTTPException(status_code=400, detail="Boss, URL dalna zaroori hai!")
+        
+    # Multi-Proxy Web Scraper Pipeline
+    proxies = [
+        f"https://api.allorigins.win/get?url={url}",
+        f"https://api.codetabs.com/v1/proxy?quest={url}",
+        f"https://corsproxy.io/?{url}"
+    ]
+    
+    html_content = ""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for p_url in proxies:
+            try:
+                response = await client.get(p_url)
+                if response.status_code == 200:
+                    # Allorigins JSON response deta hai, baki raw text dete hain
+                    if "allorigins" in p_url:
+                        html_content = response.json().get("contents", "")
+                    else:
+                        html_content = response.text
+                        
+                    if html_content and len(html_content) > 1000:
+                        break
+            except Exception:
+                continue
 
+    if not html_content:
+        raise HTTPException(status_code=500, detail="Saare scraping servers busy hain, thodi der baad try karein.")
+
+    # HTML me se HD/SD direct MP4 video link nikalna
+    final_video_url = ""
+    if '"browser_native_hd_url":"' in html_content:
+        final_video_url = html_content.split('"browser_native_hd_url":"')[1].split('"')[0]
+    elif '"browser_native_sd_url":"' in html_content:
+        final_video_url = html_content.split('"browser_native_sd_url":"')[1].split('"')[0]
+    elif 'hd_src:"' in html_content:
+        final_video_url = html_content.split('hd_src:"')[1].split('"')[0]
+    elif 'sd_src:"' in html_content:
+        final_video_url = html_content.split('sd_src:"')[1].split('"')[0]
+
+    if final_video_url:
+        # JSON standard formats me convert karna (Backslashes clean karke)
+        clean_url = final_video_url.replace(r'\\', '').replace(r'\/', '/')
+        
+        # Dusre developers ko ek professional JSON output milega
+        return {
+            "status": "success",
+            "developer": "sh13y clone",
+            "platform": "Facebook",
+            "download_url": clean_url
+        }
+    
+    raise HTTPException(status_code=404, detail="Video link nahi mil payi. Ya toh video private hai ya link galat hai.")
+
+# ----------------------------------------------------
+# 2. USERS KE LIYE: FRONTEND WEBSITE
+# ----------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def home_page():
     return """
@@ -41,38 +106,20 @@ def home_page():
     <body>
         <div class="wrapper">
             <h1>FB Reels Downloader</h1>
-            <p>100% Stable Client Extraction</p>
-
+            <p>100% Stable Dual-Mode API & Website</p>
+            
             <input type="text" id="fbUrl" placeholder="Paste Facebook Link Here...">
             <button onclick="downloadFBVideo()">Download Now</button>
 
-            <div id="loader">Extracting Video... ⏳</div>
+            <div id="loader">Extracting Video via API... ⏳</div>
 
             <div id="result">
-                <div style="font-weight: bold; color: #2d3748; margin-bottom: 5px;">🎉 Video Ready!</div>
+                <div style="font-weight: bold; color: #2d3748; margin-bottom: 5px;">🎉 Video Ready Boss!</div>
                 <a href="#" id="hdLink" target="_blank" class="dl-btn">📥 Save Video (MP4)</a>
             </div>
         </div>
 
         <script>
-            async function fetchHTMLWithProxy(url, step) {
-                var proxyUrl = "";
-                if (step === 1) {
-                    proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-                    var res = await fetch(proxyUrl);
-                    var data = await res.json();
-                    return data.contents || "";
-                } else if (step === 2) {
-                    proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url);
-                    var res = await fetch(proxyUrl);
-                    return await res.text();
-                } else {
-                    proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-                    var res = await fetch(proxyUrl);
-                    return await res.text();
-                }
-            }
-
             async function downloadFBVideo() {
                 var url = document.getElementById('fbUrl').value.trim();
                 var loader = document.getElementById('loader');
@@ -86,51 +133,22 @@ def home_page():
                 loader.style.display = 'block';
                 resultDiv.style.display = 'none';
 
-                var htmlContent = "";
+                try {
+                    // Ab hamara frontend bhi hamari banayi hui real API ko hit karega!
+                    var response = await fetch('/api/download?url=' + encodeURIComponent(url));
+                    var data = await response.json();
 
-                // Multi-Proxy Loop Setup
-                for (var step = 1; step <= 3; step++) {
-                    try {
-                        loader.innerText = "Bypassing Security (Server " + step + "/3)... ⏳";
-                        htmlContent = await fetchHTMLWithProxy(url, step);
-                        if (htmlContent && htmlContent.length > 1000) {
-                            break;
-                        }
-                    } catch (e) {
-                        console.log("Proxy " + step + " dropped. Switching...");
+                    if (response.ok && data.status === "success") {
+                        document.getElementById('hdLink').href = data.download_url;
+                        loader.style.display = 'none';
+                        resultDiv.style.display = 'block';
+                    } else {
+                        loader.style.display = 'none';
+                        alert("Error: " + (data.detail || "Link extract nahi ho payi."));
                     }
-                }
-
-                if (!htmlContent) {
+                } catch (err) {
                     loader.style.display = 'none';
-                    alert("Connection temporary slow hai. Firse click karein!");
-                    return;
-                }
-
-                var finalVideoUrl = "";
-
-                if (htmlContent.includes('"browser_native_hd_url":"')) {
-                    finalVideoUrl = htmlContent.split('"browser_native_hd_url":"')[1].split('"')[0];
-                } else if (htmlContent.includes('"browser_native_sd_url":"')) {
-                    finalVideoUrl = htmlContent.split('"browser_native_sd_url":"')[1].split('"')[0];
-                } else if (htmlContent.includes('hd_src:"')) {
-                    finalVideoUrl = htmlContent.split('hd_src:"')[1].split('"')[0];
-                } else if (htmlContent.includes('sd_src:"')) {
-                    finalVideoUrl = htmlContent.split('sd_src:"')[1].split('"')[0];
-                } else if (htmlContent.includes('video_url":"')) {
-                    finalVideoUrl = htmlContent.split('video_url":"')[1].split('"')[0];
-                }
-
-                if (finalVideoUrl) {
-                    // Backslash cleaner - single correct split/join
-                    var cleanUrl = finalVideoUrl.split('\\\\').join('');
-
-                    document.getElementById('hdLink').href = cleanUrl;
-                    loader.style.display = 'none';
-                    resultDiv.style.display = 'block';
-                } else {
-                    loader.style.display = 'none';
-                    alert("Facebook ne link hidden rakha hai boss. Ek baar page refresh karke firse try karein!");
+                    alert("API Server respond nahi kar raha hai!");
                 }
             }
         </script>
