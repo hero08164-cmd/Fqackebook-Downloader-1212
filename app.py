@@ -87,7 +87,7 @@ def home_page():
                 resultDiv.style.display = 'none';
 
                 var htmlContent = "";
-                
+
                 // Multi-Proxy Loop Setup
                 for (var step = 1; step <= 3; step++) {
                     try {
@@ -122,8 +122,8 @@ def home_page():
                 }
 
                 if (finalVideoUrl) {
-                    // Raw string backslash cleaner logic
-                    var cleanUrl = finalVideoUrl.split('\\\\').join('').split('\\').join('');
+                    // Backslash cleaner - single correct split/join
+                    var cleanUrl = finalVideoUrl.split('\\\\').join('');
 
                     document.getElementById('hdLink').href = cleanUrl;
                     loader.style.display = 'none';
