@@ -42,7 +42,7 @@ def home_page():
         <div class="wrapper">
             <h1>FB Reels Downloader</h1>
             <p>100% Stable Client Extraction</p>
-            
+
             <input type="text" id="fbUrl" placeholder="Paste Facebook Link Here...">
             <button onclick="downloadFBVideo()">Download Now</button>
 
@@ -59,7 +59,7 @@ def home_page():
                 var url = document.getElementById('fbUrl').value.trim();
                 var loader = document.getElementById('loader');
                 var resultDiv = document.getElementById('result');
-                
+
                 if (!url) {
                     alert('Pehle link dalo boss!');
                     return;
@@ -90,9 +90,9 @@ def home_page():
                     }
 
                     if (finalVideoUrl) {
-                        // Backslash hataane ke liye split aur join ka use (No regex slash crash issue)
-                        var cleanUrl = finalVideoUrl.split('\\\\').join('').split('\\').join('');
-                        
+                        // Backslash hataane ke liye split/join (single, correct escape - no unterminated string crash)
+                        var cleanUrl = finalVideoUrl.split('\\\\').join('');
+
                         document.getElementById('hdLink').href = cleanUrl;
                         loader.style.display = 'none';
                         resultDiv.style.display = 'block';
