@@ -1,10 +1,15 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-import requests
+import subprocess
+import json
 import re
 
-app = FastAPI(title="Render FB Downloader API")
+app = FastAPI(
+    title="Premium Social Media Downloader API",
+    description="Free API to download Facebook Reels, Videos, and more!",
+    version="1.1.12"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,51 +19,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def bypass_and_fetch(video_url):
+def extract_video_link(video_url):
     try:
-        # Ek free global server ka use kar rahe hain jo direct link nikalta hai
-        api_url = "https://expandurl.com/api/v1/shorturl" # Just a fallback resolver representation
+        # social-media-downloader ko CLI (command line) ke zariye call kar rahe hain JSON output ke liye
+        # --json ya -j flag check karne ke liye standard subprocess call lagayi hai
+        command = ["social-media-downloader", video_url, "--json"]
         
-        # Method 2: High-speed open proxy endpoint for FB
-        backend_url = f"https://api.vytv.workers.dev/fb?url={video_url}"
+        # Command execute karke response capture kar rahe hain
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
         
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
+        if result.stdout:
+            data = json.loads(result.stdout.strip())
+            # Library ke output structure ke mutabiq best quality link nikalna
+            download_url = data.get("url") or data.get("download_url") or data.get("direct_link")
+            
+            if download_url:
+                return {
+                    "status": "success",
+                    "title": data.get("title", "Social Media Video"),
+                    "download_url": download_url,
+                    "thumbnail": data.get("thumbnail")
+                }
+                
+        # Fallback agar command direct link na de par logs clean ho
+        return {"status": "error", "message": "Video stream link nahi mil payi boss."}
         
-        response = requests.get(backend_url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # Agar unka server direct link de raha hai
-            dl_url = data.get("hd") or data.get("sd") or data.get("url")
-            if dl_url:
-                return {"status": "success", "title": "Facebook Video", "download_url": dl_url}
-
-        # Method 3: Secondary Open Saver Endpoint
-        backup_url = f"https://scrappy-fb.vercel.app/api/json?url={video_url}"
-        res_backup = requests.get(backup_url, timeout=10)
-        if res_backup.status_code == 200:
-            b_data = res_backup.json()
-            dl_url = b_data.get("url") or b_data.get("download")
-            if dl_url:
-                return {"status": "success", "title": "Facebook Video", "download_url": dl_url}
-
-        return {"status": "error", "message": "Sabhi free scrapers busy hain boss. Kuch der baad try karein."}
-        
+    except subprocess.CalledProcessError as e:
+        # Agar short links ke redirection me issue aaye toh error handle karne ke liye
+        return {"status": "error", "message": f"Library extraction failed: {e.stderr}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# ----------------------------------------------------
+# 1. DUSRE DEVELOPERS KE LIYE: API ENDPOINT
+# ----------------------------------------------------
 @app.get("/api/download")
-def download_api(url: str = Query(..., description="FB Link")):
+def download_api(url: str = Query(..., description="Video ka URL dalein")):
     if not url:
-        raise HTTPException(status_code=400, detail="URL missing hai boss!")
+        raise HTTPException(status_code=400, detail="URL dalna zaroori hai boss!")
     
-    result = bypass_and_fetch(url)
+    result = extract_video_link(url)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
+        
     return result
 
+# ----------------------------------------------------
+# 2. USERS KE LIYE: CLEAN WEBSITE FRONTEND
+# ----------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def home_page():
     return """
@@ -67,45 +75,74 @@ def home_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>FB Downloader - Ultimate Serverless</title>
+        <title>All-in-One Social Media Downloader</title>
         <style>
-            body { font-family: Arial, sans-serif; background: #1877f2; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-            .box { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); width: 90%; max-width: 450px; text-align: center; }
-            input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
-            button { width: 100%; padding: 12px; background: #0056b3; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
-            #loader { display: none; margin-top: 15px; font-weight: bold; color: #1877f2; }
-            #result { display: none; margin-top: 20px; padding: 15px; background: #f0f2f5; border-radius: 6px; text-align: left; }
-            .dl-link { display: block; text-align: center; margin-top: 10px; background: #28a745; color: white; padding: 10px; text-decoration: none; border-radius: 4px; font-weight: bold; }
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+            body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+            .wrapper { background: white; padding: 40px 30px; border-radius: 16px; box-shadow: 0px 10px 30px rgba(0,0,0,0.2); width: 100%; max-width: 500px; text-align: center; }
+            h1 { color: #764ba2; margin-bottom: 10px; font-size: 26px; }
+            p { color: #666; margin-bottom: 25px; font-size: 14px; }
+            .input-group { display: flex; flex-direction: column; gap: 15px; }
+            input { width: 100%; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px; outline: none; transition: 0.3s; }
+            input:focus { border-color: #764ba2; }
+            button { width: 100%; padding: 15px; background: #764ba2; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+            button:hover { background: #5a377d; }
+            #loader { display: none; margin-top: 20px; color: #764ba2; font-weight: bold; }
+            #result { margin-top: 25px; display: none; background: #f7fafc; padding: 20px; border-radius: 8px; text-align: left; }
+            .video-title { font-weight: bold; margin-bottom: 15px; font-size: 15px; color: #2d3748; word-break: break-all; }
+            .dl-btn { display: inline-block; text-align: center; width: 100%; padding: 12px; background: #48bb78; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
+            .dl-btn:hover { background: #38a169; }
         </style>
     </head>
     <body>
-        <div class="box">
-            <h2>FB Reels Downloader</h2>
-            <p style="color: purple; font-weight: bold;">🚀 Free Serverless Bypass Mode</p>
-            <input type="text" id="fbUrl" placeholder="Paste Facebook link here...">
-            <button onclick="downloadVideo()">Download Now</button>
-            <div id="loader">Fetching video stream... ⏳</div>
+        <div class="wrapper">
+            <h1>Social Media Downloader</h1>
+            <p>Paste Facebook, Instagram, or TikTok links below to download free!</p>
+            
+            <div class="input-group">
+                <input type="text" id="videoUrl" placeholder="Paste your link here...">
+                <button onclick="processVideo()">Download Video</button>
+            </div>
+
+            <div id="loader">Extracting high quality stream... ⏳</div>
+
             <div id="result">
-                <div id="title" style="font-weight:bold; word-break:break-all; margin-bottom: 5px;">Facebook Video</div>
-                <a href="#" id="dlBtn" target="_blank" class="dl-link">📥 Save Video</a>
+                <div class="video-title" id="vTitle">Video Ready</div>
+                <a href="#" id="vLink" target="_blank" class="dl-btn">📥 Save Video to Device</a>
             </div>
         </div>
+
         <script>
-            async function downloadVideo() {
-                const url = document.getElementById('fbUrl').value.trim();
-                if(!url) return alert('Link dalo boss!');
-                document.getElementById('loader').style.display = 'block';
-                document.getElementById('result').style.display = 'none';
+            async function processVideo() {
+                const urlInput = document.getElementById('videoUrl').value.trim();
+                const loader = document.getElementById('loader');
+                const resultDiv = document.getElementById('result');
+                
+                if (!urlInput) {
+                    alert('Boss, pehle link toh dalo!');
+                    return;
+                }
+
+                loader.style.display = 'block';
+                resultDiv.style.display = 'none';
+
                 try {
-                    const res = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
-                    const data = await res.json();
-                    document.getElementById('loader').style.display = 'none';
-                    if(res.ok) {
-                        document.getElementById('title').innerText = data.title;
-                        document.getElementById('dlBtn').href = data.download_url;
-                        document.getElementById('result').style.display = 'block';
-                    } else { alert('Error: ' + data.detail); }
-                } catch(e) { document.getElementById('loader').style.display = 'none'; alert('Server response error!'); }
+                    const response = await fetch(`/api/download?url=${encodeURIComponent(urlInput)}`);
+                    const data = await response.json();
+
+                    loader.style.display = 'none';
+
+                    if (response.ok) {
+                        document.getElementById('vTitle').innerText = data.title || "Facebook Video";
+                        document.getElementById('vLink').href = data.download_url;
+                        resultDiv.style.display = 'block';
+                    } else {
+                        alert('Error: ' + (data.detail || 'Extraction me dikkat aayi. Dusra link try karein!'));
+                    }
+                } catch (error) {
+                    loader.style.display = 'none';
+                    alert('Server response error!');
+                }
             }
         </script>
     </body>
