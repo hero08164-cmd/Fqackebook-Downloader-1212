@@ -55,6 +55,24 @@ def home_page():
         </div>
 
         <script>
+            async function fetchHTMLWithProxy(url, step) {
+                var proxyUrl = "";
+                if (step === 1) {
+                    proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+                    var res = await fetch(proxyUrl);
+                    var data = await res.json();
+                    return data.contents || "";
+                } else if (step === 2) {
+                    proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url);
+                    var res = await fetch(proxyUrl);
+                    return await res.text();
+                } else {
+                    proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+                    var res = await fetch(proxyUrl);
+                    return await res.text();
+                }
+            }
+
             async function downloadFBVideo() {
                 var url = document.getElementById('fbUrl').value.trim();
                 var loader = document.getElementById('loader');
@@ -68,41 +86,51 @@ def home_page():
                 loader.style.display = 'block';
                 resultDiv.style.display = 'none';
 
-                try {
-                    var proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-                    var response = await fetch(proxyUrl);
-                    var data = await response.json();
-                    var htmlContent = data.contents;
-
-                    var finalVideoUrl = "";
-
-                    // SAFE METHOD: Regex literals ki jagah String splitting use kar rahe hain jo kabhi crash nahi karegi
-                    if (htmlContent.includes('"browser_native_hd_url":"')) {
-                        finalVideoUrl = htmlContent.split('"browser_native_hd_url":"')[1].split('"')[0];
-                    } else if (htmlContent.includes('"browser_native_sd_url":"')) {
-                        finalVideoUrl = htmlContent.split('"browser_native_sd_url":"')[1].split('"')[0];
-                    } else if (htmlContent.includes('hd_src:"')) {
-                        finalVideoUrl = htmlContent.split('hd_src:"')[1].split('"')[0];
-                    } else if (htmlContent.includes('sd_src:"')) {
-                        finalVideoUrl = htmlContent.split('sd_src:"')[1].split('"')[0];
-                    } else if (htmlContent.includes('video_url":"')) {
-                        finalVideoUrl = htmlContent.split('video_url":"')[1].split('"')[0];
+                var htmlContent = "";
+                
+                // Multi-Proxy Loop Setup
+                for (var step = 1; step <= 3; step++) {
+                    try {
+                        loader.innerText = "Bypassing Security (Server " + step + "/3)... ⏳";
+                        htmlContent = await fetchHTMLWithProxy(url, step);
+                        if (htmlContent && htmlContent.length > 1000) {
+                            break;
+                        }
+                    } catch (e) {
+                        console.log("Proxy " + step + " dropped. Switching...");
                     }
+                }
 
-                    if (finalVideoUrl) {
-                        // Backslash hataane ke liye split/join (single, correct escape - no unterminated string crash)
-                        var cleanUrl = finalVideoUrl.split('\\\\').join('');
-
-                        document.getElementById('hdLink').href = cleanUrl;
-                        loader.style.display = 'none';
-                        resultDiv.style.display = 'block';
-                    } else {
-                        loader.style.display = 'none';
-                        alert("Facebook secure wall hit ho gayi boss. Firse try karein.");
-                    }
-                } catch (err) {
+                if (!htmlContent) {
                     loader.style.display = 'none';
                     alert("Connection temporary slow hai. Firse click karein!");
+                    return;
+                }
+
+                var finalVideoUrl = "";
+
+                if (htmlContent.includes('"browser_native_hd_url":"')) {
+                    finalVideoUrl = htmlContent.split('"browser_native_hd_url":"')[1].split('"')[0];
+                } else if (htmlContent.includes('"browser_native_sd_url":"')) {
+                    finalVideoUrl = htmlContent.split('"browser_native_sd_url":"')[1].split('"')[0];
+                } else if (htmlContent.includes('hd_src:"')) {
+                    finalVideoUrl = htmlContent.split('hd_src:"')[1].split('"')[0];
+                } else if (htmlContent.includes('sd_src:"')) {
+                    finalVideoUrl = htmlContent.split('sd_src:"')[1].split('"')[0];
+                } else if (htmlContent.includes('video_url":"')) {
+                    finalVideoUrl = htmlContent.split('video_url":"')[1].split('"')[0];
+                }
+
+                if (finalVideoUrl) {
+                    // Raw string backslash cleaner logic
+                    var cleanUrl = finalVideoUrl.split('\\\\').join('').split('\\').join('');
+
+                    document.getElementById('hdLink').href = cleanUrl;
+                    loader.style.display = 'none';
+                    resultDiv.style.display = 'block';
+                } else {
+                    loader.style.display = 'none';
+                    alert("Facebook ne link hidden rakha hai boss. Ek baar page refresh karke firse try karein!");
                 }
             }
         </script>
