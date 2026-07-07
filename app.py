@@ -18,46 +18,32 @@ app.add_middleware(
 
 def extract_video_link(video_url):
     try:
-        # Command run kar rahe hain bina code crash kiye output dekhne ke liye
-        command = ["social-media-downloader", video_url, "--json"]
-        result = subprocess.run(command, capture_output=True, text=True)
+        # JUGAD: Hum CLI ko bol rahe hain ki pehle se hi 'Enter' (\n) dabaya hua hai
+        # Isse "Press Enter to start" wala block bypass ho jayega
+        command = ["social-media-downloader", video_url]
         
-        # Debugging ke liye Render ke logs me print karega
-        print("STDOUT OUTPUT:", result.stdout)
-        print("STDERR OUTPUT:", result.stderr)
+        # input='\n' dene se library ko automatic Enter input mil jayega
+        result = subprocess.run(command, input='\n', capture_output=True, text=True, timeout=30)
         
-        if result.returncode == 0 and result.stdout:
-            try:
-                data = json.loads(result.stdout.strip())
-                download_url = data.get("url") or data.get("download_url") or data.get("direct_link")
-                if download_url:
-                    return {
-                        "status": "success",
-                        "title": data.get("title", "Facebook Video"),
-                        "download_url": download_url
-                    }
-            except json.JSONDecodeError:
-                # Agar output JSON nahi hai, toh raw text se URL nikalne ki koshish karenge
-                pass
-
-        # METHOD 2: Agar JSON flag kaam nahi kar raha, toh bina flag ke chala kar output check karte hain
-        raw_command = ["social-media-downloader", video_url]
-        raw_result = subprocess.run(raw_command, capture_output=True, text=True)
-        print("RAW CLIENT OUTPUT:", raw_result.stdout)
+        print("LATEST CLIENT OUTPUT:\n", result.stdout)
         
-        # Raw text me se http/https link extract karna
-        urls = re.findall(r'(https?://[^\s]+)', raw_result.stdout)
+        # Output mein se http/https link extract karna (Kyunki library terminal par download link print karegi)
+        urls = re.findall(r'(https?://[^\s\?\"\'>]+)', result.stdout)
+        
+        # Facebook ke formats (.mp4 ya fbcdn links) filter karna
+        fb_urls = [u for u in urls if "fbcdn" in u or "facebook.com" in u or ".mp4" in u]
+        
+        if fb_urls:
+            return {"status": "success", "title": "Extracted Reel/Video", "download_url": fb_urls[0]}
+            
         if urls:
-            # Sabse aakhri ya pehli url jo video stream ho sakti hai
-            return {"status": "success", "title": "Extracted Video", "download_url": urls[0]}
+            return {"status": "success", "title": "Extracted Video", "download_url": urls[-1]}
 
-        return {
-            "status": "error", 
-            "message": f"Extraction failed. Server Logs: {result.stderr or raw_result.stdout}"
-        }
+        return {"status": "error", "message": "Link nahi mil paayi boss, logs check karein."}
         
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "message": "Bypass hone me zyada time lag raha hai. Firse try karein."}
     except Exception as e:
-        print("CRASH LOG:", traceback.format_exc())
         return {"status": "error", "message": f"Internal Error: {str(e)}"}
 
 @app.get("/api/download")
