@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import subprocess
 import json
 import traceback
+import re  # <-- Bas ye line miss ho gayi thi, isko yahan jodh dein!
 
 app = FastAPI(title="Social Media Downloader Debug Edition")
 
