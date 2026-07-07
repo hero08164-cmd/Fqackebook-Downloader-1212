@@ -14,34 +14,50 @@ app.add_middleware(
 )
 
 # 🔑 APNI RAPIDAPI KEY YAHAN DALEIN
-RAPIDAPI_KEY = "APNI_X_RAPIDAPI_KEY_YAHAN_DALEIN"
+RAPIDAPI_KEY = "e7e2b4ac57mshf5be36f57ac2478p1511dbjsne2dce6703f94"
 
 def fetch_via_rapidapi(video_url):
-    # Hum ek reliable free-tier proxy API use kar rahe hain RapidAPI se
+    # 📍 Jis API ko aapne select kiya hai uska main URL
     url = "https://social-media-video-downloader.p.rapidapi.com/api/v1/facebook/video"
     querystring = {"url": video_url}
     
+    # 🛠️ Aapke bataye huye headers yahan set ho gaye hain
     headers = {
         "X-RapidAPI-Key": RAPIDAPI_KEY,
-        "X-RapidAPI-Host": "social-media-video-downloader.p.rapidapi.com"
+        "X-RapidAPI-Host": "social-media-video-downloader.p.rapidapi.com",
+        "Content-Type": "application/json"
     }
     
     try:
         response = requests.get(url, headers=headers, params=querystring, timeout=15)
         if response.status_code == 200:
             data = response.json()
-            # RapidAPI response ke data structure ke mutabiq keys format karein
-            links = data.get("links", {})
-            download_url = links.get("hd") or links.get("sd") or data.get("url")
+            
+            # Smart Extraction: Agar response me alag-alag keys hain toh sab check karega
+            download_url = None
+            
+            # Agar links dictionary ke andar hd/sd hai
+            if "links" in data and isinstance(data["links"], dict):
+                download_url = data["links"].get("hd") or data["links"].get("sd")
+            
+            # Agar direct top-level par 'url', 'download_url' ya 'video' naam ki key hai
+            if not download_url:
+                download_url = data.get("url") or data.get("download_url") or data.get("video")
+                
+            # Agar data ke andar 'result' object hai (kuch APIs aisa karti hain)
+            if not download_url and "result" in data:
+                res_obj = data["result"]
+                if isinstance(res_obj, dict):
+                    download_url = res_obj.get("hd") or res_obj.get("sd") or res_obj.get("url")
             
             if download_url:
                 return {
                     "status": "success",
-                    "title": data.get("title", "Facebook Video"),
-                    "download_url": download_url,
-                    "thumbnail": data.get("picture")
+                    "title": data.get("title") or data.get("caption") or "Facebook Video",
+                    "download_url": download_url
                 }
-        return {"status": "error", "message": "Proxy bypass failed or API limit reached."}
+                
+        return {"status": "error", "message": f"API Error (Status: {response.status_code}). Check if API limits are okay."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
