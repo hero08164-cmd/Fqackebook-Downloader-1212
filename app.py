@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import requests
+import re
 
 app = FastAPI(title="Render FB Downloader API")
 
@@ -13,51 +14,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔑 APNI RAPIDAPI KEY YAHAN DALEIN
-RAPIDAPI_KEY = "e7e2b4ac57mshf5be36f57ac2478p1511dbjsne2dce6703f94"
-
-def fetch_via_rapidapi(video_url):
-    # 📍 Jis API ko aapne select kiya hai uska main URL
-    url = "https://social-media-video-downloader.p.rapidapi.com/api/v1/facebook/video"
-    querystring = {"url": video_url}
-    
-    # 🛠️ Aapke bataye huye headers yahan set ho gaye hain
-    headers = {
-        "X-RapidAPI-Key": RAPIDAPI_KEY,
-        "X-RapidAPI-Host": "social-media-video-downloader.p.rapidapi.com",
-        "Content-Type": "application/json"
-    }
-    
+def bypass_and_fetch(video_url):
     try:
-        response = requests.get(url, headers=headers, params=querystring, timeout=15)
+        # Ek free global server ka use kar rahe hain jo direct link nikalta hai
+        api_url = "https://expandurl.com/api/v1/shorturl" # Just a fallback resolver representation
+        
+        # Method 2: High-speed open proxy endpoint for FB
+        backend_url = f"https://api.vytv.workers.dev/fb?url={video_url}"
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        
+        response = requests.get(backend_url, headers=headers, timeout=10)
+        
         if response.status_code == 200:
             data = response.json()
-            
-            # Smart Extraction: Agar response me alag-alag keys hain toh sab check karega
-            download_url = None
-            
-            # Agar links dictionary ke andar hd/sd hai
-            if "links" in data and isinstance(data["links"], dict):
-                download_url = data["links"].get("hd") or data["links"].get("sd")
-            
-            # Agar direct top-level par 'url', 'download_url' ya 'video' naam ki key hai
-            if not download_url:
-                download_url = data.get("url") or data.get("download_url") or data.get("video")
-                
-            # Agar data ke andar 'result' object hai (kuch APIs aisa karti hain)
-            if not download_url and "result" in data:
-                res_obj = data["result"]
-                if isinstance(res_obj, dict):
-                    download_url = res_obj.get("hd") or res_obj.get("sd") or res_obj.get("url")
-            
-            if download_url:
-                return {
-                    "status": "success",
-                    "title": data.get("title") or data.get("caption") or "Facebook Video",
-                    "download_url": download_url
-                }
-                
-        return {"status": "error", "message": f"API Error (Status: {response.status_code}). Check if API limits are okay."}
+            # Agar unka server direct link de raha hai
+            dl_url = data.get("hd") or data.get("sd") or data.get("url")
+            if dl_url:
+                return {"status": "success", "title": "Facebook Video", "download_url": dl_url}
+
+        # Method 3: Secondary Open Saver Endpoint
+        backup_url = f"https://scrappy-fb.vercel.app/api/json?url={video_url}"
+        res_backup = requests.get(backup_url, timeout=10)
+        if res_backup.status_code == 200:
+            b_data = res_backup.json()
+            dl_url = b_data.get("url") or b_data.get("download")
+            if dl_url:
+                return {"status": "success", "title": "Facebook Video", "download_url": dl_url}
+
+        return {"status": "error", "message": "Sabhi free scrapers busy hain boss. Kuch der baad try karein."}
+        
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -66,7 +54,7 @@ def download_api(url: str = Query(..., description="FB Link")):
     if not url:
         raise HTTPException(status_code=400, detail="URL missing hai boss!")
     
-    result = fetch_via_rapidapi(url)
+    result = bypass_and_fetch(url)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result
@@ -79,7 +67,7 @@ def home_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>FB Downloader - Premium Proxy Edition</title>
+        <title>FB Downloader - Ultimate Serverless</title>
         <style>
             body { font-family: Arial, sans-serif; background: #1877f2; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
             .box { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); width: 90%; max-width: 450px; text-align: center; }
@@ -93,10 +81,10 @@ def home_page():
     <body>
         <div class="box">
             <h2>FB Reels Downloader</h2>
-            <p style="color: blue; font-weight: bold;">⚡ Premium Proxy Bypass Mode</p>
+            <p style="color: purple; font-weight: bold;">🚀 Free Serverless Bypass Mode</p>
             <input type="text" id="fbUrl" placeholder="Paste Facebook link here...">
             <button onclick="downloadVideo()">Download Now</button>
-            <div id="loader">Processing via Proxy... ⏳</div>
+            <div id="loader">Fetching video stream... ⏳</div>
             <div id="result">
                 <div id="title" style="font-weight:bold; word-break:break-all; margin-bottom: 5px;">Facebook Video</div>
                 <a href="#" id="dlBtn" target="_blank" class="dl-link">📥 Save Video</a>
@@ -117,7 +105,7 @@ def home_page():
                         document.getElementById('dlBtn').href = data.download_url;
                         document.getElementById('result').style.display = 'block';
                     } else { alert('Error: ' + data.detail); }
-                } catch(e) { document.getElementById('loader').style.display = 'none'; alert('Server error!'); }
+                } catch(e) { document.getElementById('loader').style.display = 'none'; alert('Server response error!'); }
             }
         </script>
     </body>
